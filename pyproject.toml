@@ -1,0 +1,61 @@
+[project]
+name = "mbarc-atari"
+version = "0.1.0"
+description = "Model-Based Aware Reward Classification (MBARC) for Atari 100k benchmark"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+
+dependencies = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "gymnasium[atari,accept-rom-license]>=0.29.0",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.66.0",
+    "scipy>=1.11.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+]
+timeout = 600  # 10 minutes default timeout
+
+[tool.coverage.run]
+source = ["mbarc", "atari_utils"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

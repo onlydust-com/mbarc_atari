@@ -1,0 +1,82 @@
+# Dockerfile for testing MBARC with uv package manager
+FROM python:3.12-slim-trixie
+
+# Copy uv from official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    # OpenCV dependencies
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
+    libgl1 \
+    # Build tools (may be needed for some packages)
+    build-essential \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    # Disable OpenCV threading to avoid PyTorch DataLoader conflicts
+    OPENCV_NUM_THREADS=0 \
+    # Use CPU device for tests
+    DEVICE=cpu
+
+# Copy dependency files first for better caching
+COPY pyproject.toml ./
+
+# Create virtual environment
+RUN uv venv
+
+# Add virtual environment to PATH
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Install dependencies from pyproject.toml
+# We install torch CPU-only version for smaller image size
+# Note: gym (old) is NOT compatible with Python 3.12, only gymnasium
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install \
+    torch>=2.1.0 \
+    torchvision>=0.16.0 \
+    "gymnasium>=0.29.0" \
+    "opencv-python>=4.8.0" \
+    "numpy>=1.24.0" \
+    "tqdm>=4.66.0" \
+    "scipy>=1.11.0" \
+    "matplotlib>=3.7.0" \
+    "pytest>=7.4.0" \
+    "pytest-timeout>=2.2.0" \
+    "pytest-cov>=4.1.0"
+
+# Install TensorFlow first (required by OpenAI baselines)
+# This is large (~500MB) but necessary for full MBARC functionality
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install "tensorflow>=2.10.0,<2.18.0"
+
+# Install OpenAI baselines from GitHub (requires TensorFlow to be already installed)
+# We skip the TensorFlow version check by installing without building isolation
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --no-build-isolation git+https://github.com/openai/baselines.git@master
+
+# Install Gymnasium with Atari support and accept ROM license
+# This will automatically download and install ROMs
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install "gymnasium[atari,accept-rom-license]>=0.29.0"
+
+# Copy the rest of the project
+COPY . .
+
+# Create gym -> gymnasium compatibility shim
+# This allows some MBARC code to import gym when we only have gymnasium
+RUN echo "import gymnasium as gym; import sys; sys.modules['gym'] = gym" > /app/.venv/lib/python3.12/site-packages/gym.py
+
+# Default command: run pytest
+CMD ["pytest", "tests/", "-v", "--tb=short"]
